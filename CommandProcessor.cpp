@@ -25,6 +25,22 @@ std::string CommandProcessor::execute(const std::vector<std::string>& command) {
         this -> db.set(command[1], command[2]);
         return "+OK\r\n";
     }
+
+    if(cmd == "GET" || cmd == "get"){
+        // GET command requires 2 arguments
+        if(command.size() != 2){
+            return "-ERR wrong number of arguments for 'get' command\r\n";
+        }
+        const auto value_from_db = this -> db.get(command[1]);
+        if(value_from_db.empty()){
+            // RESP format to handle the elements, which were not found in db
+            return "$-1\r\n";
+        }
+
+        // RESP format: first length of value, then value
+        return "$" + std::to_string(value_from_db.length()) + "\r\n" + value_from_db + "\r\n";
+    }
+
     // Default response for unimplemented or unknown commands
     return "-ERR command not implemented yet\r\n";
 }

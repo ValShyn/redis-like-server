@@ -41,6 +41,21 @@ std::string CommandProcessor::execute(const std::vector<std::string>& command) {
         return "$" + std::to_string(value_from_db.length()) + "\r\n" + value_from_db + "\r\n";
     }
 
+    if(cmd == "del" || cmd == "DEL"){
+        // DEL requires at least one key
+        if(command.size() != 2){
+            return "-ERR wrong number of arguments for 'del' command\r\n";
+        }
+
+        const bool is_deleted = this -> db.del(command[1]);
+
+        //Redis return nums of deleted keys in DEL operation
+        if(is_deleted){
+            return ":" + std::to_string(is_deleted) + "\r\n";
+        }
+        return ":0\r\n";
+    }
+
     // Default response for unimplemented or unknown commands
     return "-ERR command not implemented yet\r\n";
 }

@@ -13,3 +13,10 @@ std::string Database::get(const std::string& key) const{
     }
     return "";
 }
+
+bool Database::del(const std::string& key){
+    // erase() returns the num of keys, which were erased
+    bool is_erased = this -> db.erase(key);
+
+    return is_erased;
+}

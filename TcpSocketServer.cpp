@@ -1,5 +1,6 @@
-#pragma once
+#include "CommandProcessor.hpp"
 
+#include <sstream>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
@@ -15,18 +16,21 @@
 // serverAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
 
 int main(){
-    std::string port ="6379";
-    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    CommandProcessor processor;
+
+    std::string port ="6379";// our port
+    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);// af_inet = ip4 , sock_stream = TCP, 0 is flags
 
     if (serverSocket == -1) {
         std::cerr << "Socket creation failed: " << strerror(errno) << std::endl;
         exit(1);
     }
 
-    sockaddr_in serverAddress;
+    sockaddr_in serverAddress;// Struct form socket class
     serverAddress.sin_addr.s_addr = INADDR_ANY;
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(6379);// nie 8080 bo w Redis zazwyczaj korzystają z 6379
+    serverAddress.sin_port = htons(6379);// not 8080 cause in Redis we usually use 6379
 
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
         std::cerr << strerror(errno) << std::endl;
@@ -59,9 +63,31 @@ int main(){
             std::cerr << "Disconnect" << strerror(errno) << std::endl;
             continue;
         } else{
-            std::string message(buffer, bytesReceived);
-            if(message.find("PING") != std::string::npos){ // npos = no position
-                send(clientSocket, "+PONG\r\n", 7, 0);
+            std::string rawMessage(buffer, bytesReceived);
+
+            std::stringstream ss(rawMessage);   // make form our string sock steam
+            std::string word;
+            std::vector<std::string> parsedCommands;
+
+            while(ss >> word){
+                parsedCommands.push_back(word);
+            }
+
+            std::string response = processor.execute(parsedCommands);
+
+            size_t totalSent = 0;
+            size_t bytesLeft = response.length();
+            const char* data = response.c_str();
+
+            while (totalSent < bytesLeft) {
+                int n = send(clientSocket, data + totalSent, bytesLeft - totalSent, 0);
+                
+                if (n < 0) {
+                    std::cerr << "Send error: " << strerror(errno) << std::endl;
+                    break; // Вырываемся из цикла при ошибке
+                }
+                
+                totalSent += n; // Сдвигаем ползунок отправленных данных
             }
         }
         close(clientSocket);

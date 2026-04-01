@@ -37,3 +37,7 @@ Thumbs.db
 *.user
 *.sln
 redis_server
+Database.cpp
+Database.hpp
+CommandProcessor.cpp
+CommandProcessor.hpp

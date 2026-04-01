@@ -36,3 +36,4 @@ Thumbs.db
 *.suo
 *.user
 *.sln
+redis_server

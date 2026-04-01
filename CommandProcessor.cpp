@@ -62,7 +62,7 @@ std::string CommandProcessor::execute(const std::vector<std::string>& command) {
             return "-ERR wrong number of arguments for 'exists' command\r\n";
         }
 
-        bool exists = db.exists(command[1]);
+        bool exists = this -> db.exists(command[1]);
 
         // if key exists, return 1, else 0
         if(exists){
@@ -70,6 +70,21 @@ std::string CommandProcessor::execute(const std::vector<std::string>& command) {
         }
 
         return ":0\r\n";
+    }
+
+    if(cmd == "incr" || cmd == "INCR"){
+        // INCR command requires two arguments
+        if(command.size() != 2){
+            return "-ERR wrong number of arguments for 'incr' command\r\n";
+        }
+
+        try{
+            long long increased_value = this -> db.incr(command[1]);
+            return ":" + std::to_string(increased_value) + "\r\n";
+        }
+        catch(std::runtime_error&){
+            return "-ERR value is not an integer or out of range\r\n";
+        }
     }
 
     // Default response for unimplemented or unknown commands

@@ -56,6 +56,22 @@ std::string CommandProcessor::execute(const std::vector<std::string>& command) {
         return ":0\r\n";
     }
 
+    if(cmd == "exists" || cmd == "EXISTS"){
+        // EXISTS command requires two arguments
+        if(command.size() != 2){
+            return "-ERR wrong number of arguments for 'exists' command\r\n";
+        }
+
+        bool exists = db.exists(command[1]);
+
+        // if key exists, return 1, else 0
+        if(exists){
+            return ":1\r\n";
+        }
+
+        return ":0\r\n";
+    }
+
     // Default response for unimplemented or unknown commands
     return "-ERR command not implemented yet\r\n";
 }

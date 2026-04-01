@@ -1,6 +1,8 @@
 #pragma once
 #include <unordered_map>
 #include <string>
+#include <stdexcept>
+
 
 class Database{
     private:
@@ -11,4 +13,5 @@ class Database{
     std::string get(const std::string& key) const;
     bool del(const std::string& key);
     bool exists(const std::string& key) const;
+    long long incr(const std::string& key);
 };

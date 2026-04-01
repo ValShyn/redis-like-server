@@ -20,3 +20,13 @@ bool Database::del(const std::string& key){
 
     return is_erased;
 }
+
+bool Database::exists(const std::string& key) const{
+    auto item = this -> db.find(key);
+
+    // return true if the key exists in db
+    if(item != db.end()){
+        return true;
+    }
+    return false;
+}

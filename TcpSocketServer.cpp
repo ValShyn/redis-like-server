@@ -31,7 +31,7 @@ int main(){
     sockaddr_in serverAddress;// Struct form socket class
     serverAddress.sin_addr.s_addr = INADDR_ANY;
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(6379);// not 8080 cause in Redis we usually use 6379
+    serverAddress.sin_port = htons(6379);// not 8080 cause in Redis we usually use 6379, htons change from bid-endian to little
 
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
         std::cerr << strerror(errno) << std::endl;
@@ -46,7 +46,7 @@ int main(){
 
     std::cout << "Redis-clone is listening... " << std::endl;
     
-
+    //while loop cause it's sarver
     while(true){
         int clientSocket = accept(serverSocket, nullptr, nullptr);
         // int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddr, &clientAddrLen);
@@ -58,10 +58,11 @@ int main(){
 
         std::cout << "Client are connected" << std::endl;
 
-        
+        //use while cause always waiting for something
         while(true){
             char buffer[1024] = {0};
-            int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+            int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);//receiving our command
+            //if we don't get message it means something goes wrong
             if(bytesReceived <= 0){
                 if(bytesReceived == 0){
                     std::cout <<"Client disconected";
@@ -70,27 +71,27 @@ int main(){
                 }
                 break;
             }
-        
+            //create string which size is buffer and the value is bytesReceived
             std::string rawMessage(buffer, bytesReceived);
 
-            std::string response = processor.execute(RespParser::parse(rawMessage));
+            std::string response = processor.execute(RespParser::parse(rawMessage));//use parse method to parse ht command and give it to the CommandProcassor method
 
             size_t totalSent = 0;
             size_t bytesLeft = response.length();
-            const char* data = response.c_str();
-
+            const char* data = response.c_str();//our oldshcool func send() doesn't understand string so we convert it to char array
+            //we send data by parts
             while (totalSent < bytesLeft) {
                 int n = send(clientSocket, data + totalSent, bytesLeft - totalSent, 0);
                 
                 if (n < 0) {
                     std::cerr << "Send error: " << strerror(errno) << std::endl;
-                    break; // Вырываемся из цикла при ошибке
+                    break; // break out of while
                 }
                 
-                totalSent += n; // Сдвигаем ползунок отправленных данных
+                totalSent += n;
             }
         }
-    close(clientSocket);
+    close(clientSocket);//close client socket
     std::cout << "Client socket is closed" << std::endl;        
     }
     

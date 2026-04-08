@@ -41,4 +41,4 @@ Database.cpp
 Database.hpp
 CommandProcessor.cpp
 CommandProcessor.hpp
-redis_server
+redis-server

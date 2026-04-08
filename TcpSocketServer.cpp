@@ -1,4 +1,5 @@
 #include "CommandProcessor.hpp"
+#include "RespParser.hpp"
 
 #include <sstream>
 #include <cstring>
@@ -57,23 +58,22 @@ int main(){
 
         std::cout << "Client are connected" << std::endl;
 
-        char buffer[1024] = {0};
-        int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if(bytesReceived <= 0){
-            std::cerr << "Disconnect" << strerror(errno) << std::endl;
-            continue;
-        } else{
+        
+        while(true){
+            char buffer[1024] = {0};
+            int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+            if(bytesReceived <= 0){
+                if(bytesReceived == 0){
+                    std::cout <<"Client disconected";
+                } else{
+                    std::cerr << "Disconnect" << strerror(errno) << std::endl;
+                }
+                break;
+            }
+        
             std::string rawMessage(buffer, bytesReceived);
 
-            std::stringstream ss(rawMessage);   // make form our string sock steam
-            std::string word;
-            std::vector<std::string> parsedCommands;
-
-            while(ss >> word){
-                parsedCommands.push_back(word);
-            }
-
-            std::string response = processor.execute(parsedCommands);
+            std::string response = processor.execute(RespParser::parse(rawMessage));
 
             size_t totalSent = 0;
             size_t bytesLeft = response.length();
@@ -90,10 +90,8 @@ int main(){
                 totalSent += n; // Сдвигаем ползунок отправленных данных
             }
         }
-        close(clientSocket);
-        std::cout << "Client socket is closed" << std::endl;
-        
-        
-
+    close(clientSocket);
+    std::cout << "Client socket is closed" << std::endl;        
     }
+    
 }

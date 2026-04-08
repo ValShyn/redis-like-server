@@ -1,4 +1,5 @@
 #include "RespParser.hpp"
+#include "sstream"
 
 std::vector<std::string> RespParser::parse(const std::string& rawMessage){
     std::vector<std::string> parsedCommands;
@@ -16,7 +17,7 @@ std::vector<std::string> RespParser::parse(const std::string& rawMessage){
     
     size_t endLine = rawMessage.find("\r\n", cursor);//find first \r\n
 
-    //if (endLine == std::string::npos) return parsedCommands; 
+    if (endLine == std::string::npos) return parsedCommands; 
 
     size_t length = endLine - cursor;
 
@@ -37,6 +38,8 @@ std::vector<std::string> RespParser::parse(const std::string& rawMessage){
         parsedCommands.push_back(word);
         cursor += wordLen + 2;// jump over the word and \r\n
     }
+
+    return parsedCommands;
     
 
 }

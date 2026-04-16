@@ -87,6 +87,70 @@ std::string CommandProcessor::execute(const std::vector<std::string>& command) {
         }
     }
 
+    if(cmd == "keys" || cmd == "KEYS"){
+        if(command.size() != 2){
+            return "-ERR wrong number of arguments for 'keys' command\r\n";
+        }
+
+        if(command[1] != "*"){
+            return "-ERR 'keys' command requires '*'\r\n";
+        }
+
+        std::vector<std::string> result = this -> db.keys();
+
+        // response starts with the number of keys
+        std::string response = "*" + std::to_string(result.size()) + "\r\n";
+
+        for(const auto& key : result){
+
+            // for each key we add his size and key
+            response += "$" + std::to_string(key.length()) + "\r\n" + key + "\r\n";
+        }
+
+        return response;
+
+    }
+
+    if(cmd == "ttl" || cmd == "TTL"){
+        if(command.size() != 2){
+            return "-ERR wrong number of arguments for 'ttl' command\r\n";
+        }
+
+        std::string key = command[1];
+        if (key.empty()) {
+            return "-ERR 'ttl' command requires a non-empty key\r\n";
+        }
+
+        // return how many seconds are left
+        // -2 means that key does not exist or has been expired
+        // -1 means key has no expiraton time
+        return ":" + this -> db.ttl(key) + "\r\n";
+    }
+
+    if(cmd == "expire" || cmd == "EXPIRE"){
+        // validate arguments: EXPIRE key seconds
+        if(command.size() != 3){
+            return "-ERR wrong number of arguments for 'expire' command\r\n";
+        }
+        std::string key = command[1];
+
+        try{
+            // convert string duration to long long
+            long long seconds = std::stoll(command[2]);
+            bool was_added_to_db = this -> db.expire(key, seconds); // update db and return status
+
+            // return RESP format: 1 - success, 0 - failed
+            return ":" + std::to_string(was_added_to_db) + "\r\n";
+        }
+        catch(std::invalid_argument){
+            return "-ERR value is not an integer\r\n";
+        }
+        catch(std::out_of_range){
+            return "-ERR number is too big for long long\r\n";
+        }
+
+    }
+
     // Default response for unimplemented or unknown commands
     return "-ERR command not implemented yet\r\n";
 }

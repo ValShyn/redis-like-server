@@ -1,5 +1,5 @@
 #include "RespParser.hpp"
-#include "sstream"
+#include <sstream>
 
 std::vector<std::string> RespParser::parse(const std::string& rawMessage){
     std::vector<std::string> parsedCommands;
@@ -30,7 +30,7 @@ std::vector<std::string> RespParser::parse(const std::string& rawMessage){
 
     cursor = endLine + 2; //jump over \r\n
     //loop through all elements of the command
-    for(int i = 0; i < numArgs; ++i)
+    for(int i = 0; i < numArgs; ++i){
         //the first element is always $
         if(cursor >= rawMessage.length() || rawMessage[cursor] != '$') break;
         cursor++;//jump over $
@@ -43,7 +43,7 @@ std::vector<std::string> RespParser::parse(const std::string& rawMessage){
         std::string word = rawMessage.substr(cursor, wordLen);//take this word
         parsedCommands.push_back(word);
         cursor += wordLen + 2;// jump over the word and \r\n
-    }
+        }
 
     return parsedCommands;
     

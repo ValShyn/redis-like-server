@@ -1,6 +1,5 @@
 #include "CommandProcessor.hpp"
 #include "RespParser.hpp"
-
 #include <sstream>
 #include <cerrno>
 #include <cstring>

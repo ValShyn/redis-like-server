@@ -2,24 +2,37 @@
 #include "RespParser.hpp"
 
 #include <sstream>
+#include <cerrno>
 #include <cstring>
 #include <iostream>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <cerrno>  //
-#include <cstring>
-/* 
-Here we use if to know on what operating system
-the server is launched
-*/
+#include <vector>
+#include <string>
+
+
+#ifndef _WIN32
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h> 
+    #include <fcntl.h>  
+#endif
+
+
 #if defined(__APPLE__)
     #define USE_KQUEUE // I use MAC
     #include <sys/event.h>
     #include <time.h>
-#else
-    #define USE_POLL // someone may use Linux/Windows
-    #include <poll.h>
+
+#elif defined(__linux__) 
+    #include <sys/epoll.h>
+
+#elif defined(_WIN32)
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "Ws2_32.lib") // Automatyczne linkowanie na Windowsie
+    
+    // Hack: Zmuszamy Windowsa, by rozumiał unixowe "close()"
+    #define close closesocket 
 #endif
 
 
@@ -127,6 +140,55 @@ This is where code splitting begins
 
     }
 #endif
+#ifdef _WIN32
+    //the part of server for the rest of users
+    std::vector(pollfd) fds;
+    fds.push_back({serverSocket, POLLIN, 0});// create like a master who take all of requestes
+
+    while(true){
+        poll(fds.data(), fd.size(), -1);//.data() make iterator of where fds is
+
+        if(fds[0].revents & POLLIN){
+            int clientSocket = accept(serverSocket, nullptr, nullptr);
+            std::cout << "New client! ID:" << clientSocket << std::endl;
+             fds.push_back({clientSocket, POLLIN, 0})
+        }
+        for(size_t i = 0;  i < fds.size();){
+            if(fds[i].revents & POLLIN) {
+                char buffer[1024] = {0};
+                int bytesReceived = recv(fds[i].fd, buffer, sizeof(buffer), 0);
+
+                if(bytesReceived <= 0){
+                    close(fds[i].fd)
+                    fds.erase(fds.begin() + i);
+                } else {
+                    std::string rawMessage(buffer, bytesReceived);
+                    std::string response = processor.execute(RespParser::parse(rawMessage));
+                    size_t totalSent = 0;
+                    size_t bytesLeft = response.length();
+                    while (totalSent < bytesLeft) {
+                        int n = send(current_fd, data + totalSent, bytesLeft - totalSent, 0);
+                        
+                        if (n < 0) {
+                            std::cerr << "Send error: " << strerror(errno) << std::endl;
+                            break; // break out of while
+                        }
+                        
+                        totalSent += n;
+                    }
+                    i++;
+
+                }
+            } else {
+                i++;
+            }
+        }
+
+
+
+    }
+#endif
+
     
 
 

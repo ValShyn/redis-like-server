@@ -38,6 +38,14 @@
 
 
 int main(){
+#ifdef _WIN32
+    // Switch on windows socket tool
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed.\n";
+        return 1;
+    }
+#endif
 
     CommandProcessor processor;
 
@@ -98,6 +106,7 @@ This is where code splitting begins
 
                 //make a new connection. nullptr means 0, that poles usually are used for IP address of client , but now we don't need it
                 int clientSocket = accept(serverSocket, nullptr, nullptr);
+                std::cout << "New client!" << std::endl;
 
                 // make a new card for a new user
                 EV_SET(&change_event, clientSocket, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, 0);
@@ -110,7 +119,7 @@ This is where code splitting begins
                 char buffer[1024] = {0};
                 int bytesReceived = recv(current_fd, buffer, sizeof(buffer), 0);
                 if(bytesReceived <= 0){
-                    std::cout <<"Client disconected";
+                    std::cout << "Client disconected";
                 }
                 if(bytesReceived > 0){
                     std::string rawMessage(buffer, bytesReceived);// it'll take from buffer exactly bytesReceived bytes, ignoring /0
@@ -141,16 +150,16 @@ This is where code splitting begins
 #endif
 #ifdef _WIN32
     //the part of server for the rest of users
-    std::vector(pollfd) fds;
+    std::vector<pollfd> fds;
     fds.push_back({serverSocket, POLLIN, 0});// create like a master who take all of requestes
 
     while(true){
-        poll(fds.data(), fd.size(), -1);//.data() make iterator of where fds is
+        poll(fds.data(), fds.size(), -1);//.data() make iterator of where fds is
 
         if(fds[0].revents & POLLIN){
             int clientSocket = accept(serverSocket, nullptr, nullptr);
             std::cout << "New client! ID:" << clientSocket << std::endl;
-             fds.push_back({clientSocket, POLLIN, 0})
+            fds.push_back({clientSocket, POLLIN, 0})
         }
         for(size_t i = 0;  i < fds.size();){
             if(fds[i].revents & POLLIN) {
@@ -163,10 +172,11 @@ This is where code splitting begins
                 } else {
                     std::string rawMessage(buffer, bytesReceived);
                     std::string response = processor.execute(RespParser::parse(rawMessage));
+                    const char* data = response.c_str()
                     size_t totalSent = 0;
                     size_t bytesLeft = response.length();
                     while (totalSent < bytesLeft) {
-                        int n = send(current_fd, data + totalSent, bytesLeft - totalSent, 0);
+                        int n = send(fds[i].fd, data + totalSent, bytesLeft - totalSent, 0);
                         
                         if (n < 0) {
                             std::cerr << "Send error: " << strerror(errno) << std::endl;
@@ -188,71 +198,53 @@ This is where code splitting begins
     }
 #endif
 
-    
+#ifdef __linux__
+    int epoll_fd = epoll_create1(0);
+    struct epoll_event event;
+    event.events = EPOLLIN;
+    event.data.fd = serverSocket;
+    epoll_clt(epoll_fd, EPOLL_CTL_ADD,  sserverSocket, &event);
+    struct epoll_event activeEvents[1024];
+    while(true){
+        int num_events = epoll_wait(epoll_fd, activeEvents, 1024, -1);
+        for(size_t i = 0, i < num_events, i++){
+            for(int i = 0; i < num_events; i++){
+                int currentf_fd = activeEvents[i].data.fd;
 
+                if(current_fd = serverSocket){
+                    int clientSocket = accept(serverSocket, nullptr, nullptr);
+                    struct epoll_event clientEvent;
+                    clientEvent.event = EPOLLIN;
+                    clientEvent.data.fd = clientSocket;
+                    epoll_clt(epoll_fd, EPOLL_CTL_ADD, clientSocket, &lientEvent);
 
-    
+                } else {
+                    char buffer[1000] = {0};
+                    int bitesReceived = recv(current_fd, buffer, sizeof(buffer), 0)
+                    if(bytesReceived <= 0){
+                        close(current_fd);
+                        fds.erase(fds.begin() + i);
+                    } else {
+                        std::string rawMessage(buffer, bytesReceived);
+                        std::string response = processor.execute(RespParser::parse(rawMessage));
+                        const char* data = response.c_str()
+                        size_t totalSent = 0;
+                        size_t bytesLeft = response.length();
+                        while (totalSent < bytesLeft) {
+                            int n = send(fds[i].fd, data + totalSent, bytesLeft - totalSent, 0);
+                            
+                            if (n < 0) {
+                                std::cerr << "Send error: " << strerror(errno) << std::endl;
+                                break; // break out of while
+                            }
+                            
+                            totalSent += n;
+                        }
+                    }
+            
+                }
+            }
 
-    
-    
-
-
-
-
-
-
-
-
-
-
-
-
-    // //while loop cause it's sarver
-    // while(true){
-    //     int clientSocket = accept(serverSocket, nullptr, nullptr);
-    //     // int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddr, &clientAddrLen);
-
-    //     if(clientSocket < 0){
-    //         std::cerr << "Accepting failed" << strerror(errno) << std::endl;
-    //         continue;
-    //     }
-
-    //     std::cout << "Client are connected" << std::endl;
-
-    //     //use while cause always waiting for something
-    //     while(true){
-    //         char buffer[1024] = {0};
-    //         int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);//receiving our command
-    //         //if we don't get message it means something goes wrong
-    //         if(bytesReceived <= 0){
-    //             if(bytesReceived == 0){
-    //                 std::cout <<"Client disconected";
-    //             } else{
-    //                 std::cerr << "Disconnect" << strerror(errno) << std::endl;
-    //             }
-    //             break;
-    //         }
-    //         //create string which size is buffer and the value is bytesReceived
-    //         std::string rawMessage(buffer, bytesReceived);
-
-    //         std::string response = processor.execute(RespParser::parse(rawMessage));//use parse method to parse ht command and give it to the CommandProcassor method
-
-    //         size_t totalSent = 0;
-    //         size_t bytesLeft = response.length();
-    //         const char* data = response.c_str();//our oldshcool func send() doesn't understand string so we convert it to char array
-    //         //we send data by parts
-    //         while (totalSent < bytesLeft) {
-    //             int n = send(clientSocket, data + totalSent, bytesLeft - totalSent, 0);
-                
-    //             if (n < 0) {
-    //                 std::cerr << "Send error: " << strerror(errno) << std::endl;
-    //                 break; // break out of while
-    //             }
-                
-    //             totalSent += n;
-    //         }
-    //     }
-    // close(clientSocket);//close client socket
-    // std::cout << "Client socket is closed" << std::endl;        
-    // }
-    
+        }
+    }
+#endif

@@ -35,7 +35,35 @@
 #endif
 
 
+bool handleClientData(int clientSocket, CommandProcessor& processor){
+    char buffer[1024] = {0};
+    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+    if(bytesReceived <= 0){
+        std::cout << "Client disconected. ID :" << clientSocket << std::endl;
+        close(clientSocket);
+    }
+    
+    std::string rawMessage(buffer, bytesReceived);// it'll take from buffer exactly bytesReceived bytes, ignoring /0
+    std::string response = processor.execute(RespParser::parse(rawMessage));
+    size_t totalSent = 0;
+    size_t bytesLeft = response.length();
+    const char* data = response.c_str();//oldshcool func send() doesn't understand string so we convert it to char array
+    //we send data by parts
+    while (totalSent < bytesLeft) {
+        int n = send(clientSocket, data + totalSent, bytesLeft - totalSent, 0);
+        
+        if (n < 0) {
+            std::cerr << "Send error: " << strerror(errno) << std::endl;
+            close(clientSocket); // break out of while
+            return false;
+        }
+        
+        totalSent += n;
+    }
 
+    return true;
+
+}    
 
 int main(){
 #ifdef _WIN32
@@ -116,29 +144,7 @@ This is where code splitting begins
             } else if (evList[i].flags & EV_EOF) {          //EV_EOF means that client's got disconnected
                 close(current_fd); // in OS our socket is written like {5, clientsokcet} so we use close() to close by number
             } else {
-                char buffer[1024] = {0};
-                int bytesReceived = recv(current_fd, buffer, sizeof(buffer), 0);
-                if(bytesReceived <= 0){
-                    std::cout << "Client disconected";
-                }
-                if(bytesReceived > 0){
-                    std::string rawMessage(buffer, bytesReceived);// it'll take from buffer exactly bytesReceived bytes, ignoring /0
-                    std::string response = processor.execute(RespParser::parse(rawMessage));
-                    size_t totalSent = 0;
-                    size_t bytesLeft = response.length();
-                    const char* data = response.c_str();//oldshcool func send() doesn't understand string so we convert it to char array
-                    //we send data by parts
-                    while (totalSent < bytesLeft) {
-                        int n = send(current_fd, data + totalSent, bytesLeft - totalSent, 0);
-                        
-                        if (n < 0) {
-                            std::cerr << "Send error: " << strerror(errno) << std::endl;
-                            break; // break out of while
-                        }
-                        
-                        totalSent += n;
-                    }
-                }
+                handleClientData(current_fd, processor);
 
             }
             }
@@ -146,7 +152,7 @@ This is where code splitting begins
 
         
 
-    }
+    
 #endif
 #ifdef _WIN32
     //the part of server for the rest of users
@@ -159,7 +165,7 @@ This is where code splitting begins
         if(fds[0].revents & POLLIN){
             int clientSocket = accept(serverSocket, nullptr, nullptr);
             std::cout << "New client! ID:" << clientSocket << std::endl;
-            fds.push_back({clientSocket, POLLIN, 0})
+            fds.push_back({clientSocket, POLLIN, 0});
         }
         for(size_t i = 0;  i < fds.size();){
             if(fds[i].revents & POLLIN) {
@@ -167,12 +173,12 @@ This is where code splitting begins
                 int bytesReceived = recv(fds[i].fd, buffer, sizeof(buffer), 0);
 
                 if(bytesReceived <= 0){
-                    close(fds[i].fd)
+                    close(fds[i].fd);
                     fds.erase(fds.begin() + i);
                 } else {
                     std::string rawMessage(buffer, bytesReceived);
                     std::string response = processor.execute(RespParser::parse(rawMessage));
-                    const char* data = response.c_str()
+                    const char* data = response.c_str();
                     size_t totalSent = 0;
                     size_t bytesLeft = response.length();
                     while (totalSent < bytesLeft) {
@@ -203,35 +209,33 @@ This is where code splitting begins
     struct epoll_event event;
     event.events = EPOLLIN;
     event.data.fd = serverSocket;
-    epoll_clt(epoll_fd, EPOLL_CTL_ADD,  sserverSocket, &event);
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD,  serverSocket, &event);
     struct epoll_event activeEvents[1024];
     while(true){
         int num_events = epoll_wait(epoll_fd, activeEvents, 1024, -1);
-        for(size_t i = 0, i < num_events, i++){
             for(int i = 0; i < num_events; i++){
-                int currentf_fd = activeEvents[i].data.fd;
+                int current_fd = activeEvents[i].data.fd;
 
-                if(current_fd = serverSocket){
+                if(current_fd == serverSocket){
                     int clientSocket = accept(serverSocket, nullptr, nullptr);
                     struct epoll_event clientEvent;
-                    clientEvent.event = EPOLLIN;
+                    clientEvent.events = EPOLLIN;
                     clientEvent.data.fd = clientSocket;
-                    epoll_clt(epoll_fd, EPOLL_CTL_ADD, clientSocket, &lientEvent);
+                    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, clientSocket, &clientEvent);
 
                 } else {
                     char buffer[1000] = {0};
-                    int bitesReceived = recv(current_fd, buffer, sizeof(buffer), 0)
+                    int bytesReceived = recv(current_fd, buffer, sizeof(buffer), 0);
                     if(bytesReceived <= 0){
                         close(current_fd);
-                        fds.erase(fds.begin() + i);
                     } else {
                         std::string rawMessage(buffer, bytesReceived);
                         std::string response = processor.execute(RespParser::parse(rawMessage));
-                        const char* data = response.c_str()
+                        const char* data = response.c_str();
                         size_t totalSent = 0;
                         size_t bytesLeft = response.length();
                         while (totalSent < bytesLeft) {
-                            int n = send(fds[i].fd, data + totalSent, bytesLeft - totalSent, 0);
+                            int n = send(current_fd, data + totalSent, bytesLeft - totalSent, 0);
                             
                             if (n < 0) {
                                 std::cerr << "Send error: " << strerror(errno) << std::endl;
@@ -245,6 +249,7 @@ This is where code splitting begins
                 }
             }
 
-        }
+
     }
 #endif
+}

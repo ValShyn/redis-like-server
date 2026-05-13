@@ -41,6 +41,7 @@ bool handleClientData(int clientSocket, CommandProcessor& processor){
     if(bytesReceived <= 0){
         std::cout << "Client disconected. ID :" << clientSocket << std::endl;
         close(clientSocket);
+        return false;
     }
     
     std::string rawMessage(buffer, bytesReceived);// it'll take from buffer exactly bytesReceived bytes, ignoring /0
@@ -65,7 +66,7 @@ bool handleClientData(int clientSocket, CommandProcessor& processor){
 
 }    
 
-int main(){
+void runEventLoop(int serverSocket, CommandProcessor& processor) {
 #ifdef _WIN32
     // Switch on windows socket tool
     WSADATA wsaData;
@@ -75,31 +76,6 @@ int main(){
     }
 #endif
 
-    CommandProcessor processor;
-
-    std::string port ="6379";// our port
-    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);// af_inet = ip4 , sock_stream = TCP, 0 is flags
-
-    if (serverSocket == -1) {
-        std::cerr << "Socket creation failed: " << strerror(errno) << std::endl;
-        exit(1);
-    }
-
-    sockaddr_in serverAddress;// Struct form socket class
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(6379);// not 8080 cause in Redis we usually use 6379, htons change from bid-endian to little
-
-    if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
-        std::cerr << strerror(errno) << std::endl;
-        exit(1);
-    }
-
-    std::cout << "Listening with protocol TCP on port" << port << ".\n";
-    if(listen(serverSocket, 5) < 0){
-        std::cerr << "Listen failed: " << strerror(errno) << std::endl;
-        exit(1);
-    }
 
 /*
 
@@ -155,52 +131,36 @@ This is where code splitting begins
     
 #endif
 #ifdef _WIN32
-    //the part of server for the rest of users
-    std::vector<pollfd> fds;
-    fds.push_back({serverSocket, POLLIN, 0});// create like a master who take all of requestes
+    // Używamy struktur i flag specyficznych dla Windowsa
+    std::vector<WSAPOLLFD> fds;
+    fds.push_back({(SOCKET)serverSocket, POLLRDNORM, 0});
 
     while(true){
-        poll(fds.data(), fds.size(), -1);//.data() make iterator of where fds is
+        // WSAPoll zamiast unixowego poll
+        WSAPoll(fds.data(), fds.size(), -1);
 
-        if(fds[0].revents & POLLIN){
+        // Obsługa Głównego Szwajcara (nowe połączenia)
+        if(fds[0].revents & POLLRDNORM){
             int clientSocket = accept(serverSocket, nullptr, nullptr);
             std::cout << "New client! ID:" << clientSocket << std::endl;
-            fds.push_back({clientSocket, POLLIN, 0});
+            fds.push_back({(SOCKET)clientSocket, POLLRDNORM, 0});
         }
-        for(size_t i = 0;  i < fds.size();){
-            if(fds[i].revents & POLLIN) {
-                char buffer[1024] = {0};
-                int bytesReceived = recv(fds[i].fd, buffer, sizeof(buffer), 0);
-
-                if(bytesReceived <= 0){
-                    close(fds[i].fd);
-                    fds.erase(fds.begin() + i);
+        
+        // ZACZYNAMY OD i = 1 (omijamy Szwajcara pod fds[0])
+        for(size_t i = 1; i < fds.size(); ){
+            if(fds[i].revents & POLLRDNORM) {
+                
+                // Przekazujemy poprawny numer gniazda i procesor
+                if(!handleClientData(fds[i].fd, processor)){
+                    fds.erase(fds.begin() + i); // Usuwamy klienta, jest średnik!
                 } else {
-                    std::string rawMessage(buffer, bytesReceived);
-                    std::string response = processor.execute(RespParser::parse(rawMessage));
-                    const char* data = response.c_str();
-                    size_t totalSent = 0;
-                    size_t bytesLeft = response.length();
-                    while (totalSent < bytesLeft) {
-                        int n = send(fds[i].fd, data + totalSent, bytesLeft - totalSent, 0);
-                        
-                        if (n < 0) {
-                            std::cerr << "Send error: " << strerror(errno) << std::endl;
-                            break; // break out of while
-                        }
-                        
-                        totalSent += n;
-                    }
-                    i++;
-
+                    i++; // Klient zostaje, idziemy do następnego
                 }
+
             } else {
-                i++;
+                i++; // Brak zdarzeń, idziemy dalej
             }
         }
-
-
-
     }
 #endif
 
@@ -224,27 +184,7 @@ This is where code splitting begins
                     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, clientSocket, &clientEvent);
 
                 } else {
-                    char buffer[1000] = {0};
-                    int bytesReceived = recv(current_fd, buffer, sizeof(buffer), 0);
-                    if(bytesReceived <= 0){
-                        close(current_fd);
-                    } else {
-                        std::string rawMessage(buffer, bytesReceived);
-                        std::string response = processor.execute(RespParser::parse(rawMessage));
-                        const char* data = response.c_str();
-                        size_t totalSent = 0;
-                        size_t bytesLeft = response.length();
-                        while (totalSent < bytesLeft) {
-                            int n = send(current_fd, data + totalSent, bytesLeft - totalSent, 0);
-                            
-                            if (n < 0) {
-                                std::cerr << "Send error: " << strerror(errno) << std::endl;
-                                break; // break out of while
-                            }
-                            
-                            totalSent += n;
-                        }
-                    }
+                    handleClientData(current_fd, processor);
             
                 }
             }
@@ -252,4 +192,47 @@ This is where code splitting begins
 
     }
 #endif
+}
+int main(){
+    CommandProcessor processor;
+
+    std::string port ="6379";// our port
+    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);// af_inet = ip4 , sock_stream = TCP, 0 is flags
+
+    if (serverSocket == -1) {
+        std::cerr << "Socket creation failed: " << strerror(errno) << std::endl;
+        exit(1);
+    }
+
+    int opt = 1;
+
+    // Przygotowujemy odpowiedni wskaźnik zależnie od systemu
+#ifdef _WIN32
+    const char* opt_ptr = (const char*)&opt;
+#else
+    const void* opt_ptr = &opt;
+#endif
+
+    // Wywołujemy funkcję tylko raz, używając przygotowanego wskaźnika
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, opt_ptr, sizeof(opt)) < 0) {
+        std::cerr << "setsockopt failed: " << strerror(errno) << std::endl;
+    }
+
+    sockaddr_in serverAddress;// Struct form socket class
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(6379);// not 8080 cause in Redis we usually use 6379, htons change from bid-endian to little
+
+    if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+        std::cerr << strerror(errno) << std::endl;
+        exit(1);
+    }
+
+    std::cout << "Listening with protocol TCP on port" << port << ".\n";
+    if(listen(serverSocket, 5) < 0){
+        std::cerr << "Listen failed: " << strerror(errno) << std::endl;
+        exit(1);
+    }
+
+    runEventLoop(serverSocket, processor);
 }
